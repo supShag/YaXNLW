@@ -3,272 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 魔法仙女棒 (CDN 极速版)</title>
-
-    <script>
-    if (typeof process === 'object' && typeof require === 'function') {
-        window._oldModule = window.module;
-        window.module = undefined; 
-        window.exports = undefined;
-        window.__dirname = ''; 
-    }
-    </script>
-
+    <title>AR 魔法诊断版</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
-        :root { --glass-bg: rgba(20, 20, 28, 0.85); --accent: #ffd700; }
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
+        body { margin: 0; background: black; color: white; font-family: monospace; overflow: hidden; }
         
-        /* 强制覆盖层 */
-        #start-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 9999;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
+        /* 诊断控制台 */
+        #console-log {
+            position: absolute; top: 0; left: 0; width: 100%; height: 50%;
+            background: rgba(0,0,0,0.8); overflow-y: scroll; 
+            padding: 10px; font-size: 12px; z-index: 999; pointer-events: none;
+            border-bottom: 1px solid #333;
         }
+        .log-info { color: #0f0; }
+        .log-warn { color: #ff0; }
+        .log-err { color: #f00; font-weight: bold; font-size: 14px; }
+
+        /* 启动按钮 */
         #start-btn {
-            padding: 15px 40px; font-size: 1.2rem; background: var(--accent); color: #000;
-            border: none; border-radius: 30px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
-        }
-        
-        #loading-text { color: #fff; margin-top: 20px; font-size: 0.9rem; text-align: center; line-height: 1.5; }
-        #debug-console { 
-            position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; 
-            background: rgba(0,0,0,0.5); color: #0f0; font-size: 10px; 
-            overflow-y: scroll; pointer-events: none; z-index: 50; display: none;
+            position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%);
+            padding: 20px 40px; font-size: 20px; background: #ffd700; color: black;
+            border: none; border-radius: 10px; z-index: 1000; cursor: pointer;
         }
 
-        /* 隐藏视频，保留 Canvas */
-        #input_video { position: absolute; width: 1px; height: 1px; opacity: 0; }
-        canvas { position: absolute; top: 0; left: 0; }
-        
-        /* 简单的 UI */
-        .ui-layer { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 10; pointer-events: none; }
-        .badge { background: rgba(255,255,255,0.2); color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; margin: 0 5px; opacity: 0.5; }
-        .badge.active { background: var(--accent); color: black; opacity: 1; font-weight: bold; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        video { position: absolute; opacity: 0; width: 1px; height: 1px; }
     </style>
 </head>
 <body>
 
-    <div id="start-overlay">
-        <button id="start-btn" onclick="initApp()">点击开始魔法</button>
-        <div id="loading-text">准备就绪</div>
-    </div>
-
-    <div id="debug-console"></div>
-
-    <div class="ui-layer">
-        <span id="b-pinch" class="badge">点火</span>
-        <span id="b-peace" class="badge">极速</span>
-        <span id="b-palm" class="badge">换色</span>
-    </div>
-
+    <div id="console-log">=== 系统日志 (截图发给我) ===<br></div>
+    <button id="start-btn" onclick="startApp()">👉 点击启动检测 👈</button>
+    
     <video id="input_video" playsinline webkit-playsinline muted></video>
-    <canvas id="bgCanvas"></canvas>
-    <canvas id="fgCanvas"></canvas>
+    <canvas id="output_canvas"></canvas>
 
 <script>
-    // --- 屏幕日志工具 (用于手机调试) ---
-    function log(msg) {
+    // --- 日志工具 ---
+    const logger = document.getElementById('console-log');
+    function log(msg, type = 'info') {
+        const line = document.createElement('div');
+        line.className = 'log-' + type;
+        line.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logger.appendChild(line);
+        logger.scrollTop = logger.scrollHeight;
         console.log(msg);
-        const box = document.getElementById('loading-text');
-        if(box) box.innerHTML = msg;
-        const debug = document.getElementById('debug-console');
-        if(debug) debug.innerHTML += `> ${msg}<br>`;
     }
-    window.onerror = (msg) => log("❌ 错误: " + msg);
+    window.onerror = function(msg, url, line) {
+        log(`全局错误: ${msg} (行号:${line})`, 'err');
+    };
 
     // --- 核心变量 ---
     const videoElement = document.getElementById('input_video');
-    const bgCanvas = document.getElementById('bgCanvas');
-    const fgCanvas = document.getElementById('fgCanvas');
-    const bgCtx = bgCanvas.getContext('2d');
-    const fgCtx = fgCanvas.getContext('2d');
-    let width, height;
-
-    function resize() {
-        width = window.innerWidth; height = window.innerHeight;
-        bgCanvas.width = fgCanvas.width = width;
-        bgCanvas.height = fgCanvas.height = height;
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    // --- MediaPipe 配置 (CDN 模式) ---
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
     let hands;
-    
-    async function initApp() {
-        const btn = document.getElementById('start-btn');
-        btn.style.display = 'none';
-        log("⏳ 正在初始化 AI 引擎 (CDN)...");
+    let camera;
+
+    // --- 初始化 ---
+    async function startApp() {
+        document.getElementById('start-btn').style.display = 'none';
+        log("1. 开始初始化...");
+
+        // 1. 设置画布尺寸
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
 
         try {
+            // 2. 初始化 MediaPipe
+            log("2. 创建 Hands 实例...");
             hands = new Hands({
                 locateFile: (file) => {
-                    // 强制指向 CDN，不再使用本地文件
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    const url = `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    log(`资源定位: ${file} -> CDN`, 'info');
+                    return url;
                 }
             });
 
             hands.setOptions({
                 maxNumHands: 1,
-                modelComplexity: 1,
+                modelComplexity: 0, // 降低复杂度以提升速度
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
 
             hands.onResults(onResults);
+            log("3. Hands 实例创建完成");
 
-            await startCamera();
-
-        } catch (e) {
-            log("❌ 初始化失败: " + e.message);
-            btn.style.display = 'block';
-            btn.innerText = "重试";
-        }
-    }
-
-    async function startCamera() {
-        log("📷 请求摄像头权限...");
-        
-        // 降低分辨率要求以提高兼容性
-        const constraints = {
-            video: { 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 }, 
-                facingMode: "user" 
-            },
-            audio: false
-        };
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            // 3. 启动摄像头
+            log("4. 请求摄像头权限...");
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: 640, height: 480 },
+                audio: false
+            });
+            
             videoElement.srcObject = stream;
             
-            // Safari 关键点：必须在用户点击事件后立即调用 play
+            // 关键：等待视频载入
+            log("5. 等待视频流数据...");
+            await new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    log("-> 视频元数据已加载");
+                    resolve();
+                };
+            });
+            
             await videoElement.play();
-            
-            log("🤖 正在加载模型 (首次加载需10秒)...");
-            document.getElementById('start-overlay').style.display = 'none'; // 隐藏遮罩，但保留 log
-            
-            // 开启循环
-            processVideo();
+            log("6. 视频开始播放");
 
-        } catch (e) {
-            log("❌ 摄像头错误: " + e.message);
-            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-                log("⚠️ 必须使用 HTTPS 访问！");
+            // 4. 发送数据给 AI
+            log("7. 开始发送帧给 AI 模型 (最耗时步骤)...");
+            log("⚠️ 如果卡在这里超过 20 秒，说明网络无法下载 AI 模型文件", 'warn');
+            
+            sendFrameLoop();
+
+        } catch (error) {
+            log("❌ 致命错误: " + error.message, 'err');
+            log("提示: 如果是 NotAllowedError，请允许摄像头权限。", 'warn');
+        }
+    }
+
+    async function sendFrameLoop() {
+        if (!videoElement.paused && !videoElement.ended) {
+            try {
+                // 只有当视频准备好时才发送
+                if (videoElement.readyState >= 2) {
+                    await hands.send({image: videoElement});
+                } else {
+                    log("等待视频流缓冲...", 'warn');
+                }
+            } catch (e) {
+                log("❌ AI 处理出错: " + e.message, 'err');
+                return; // 停止循环
             }
         }
+        requestAnimationFrame(sendFrameLoop);
     }
 
-    async function processVideo() {
-        // 只有当视频真正有数据时才发送
-        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
-            await hands.send({image: videoElement});
-        }
-        // 保持循环
-        requestAnimationFrame(processVideo);
-    }
-
-    // --- 游戏逻辑部分 ---
-    
-    const handInstances = new Map();
-    const colors = ['#f00', '#0f0', '#00f', '#ff0', '#0ff'];
-    let colorIdx = 0;
-    
-    // 简单的粒子类
-    class Particle {
-        constructor(x, y, isTurbo) {
-            this.x = x; this.y = y;
-            const angle = Math.random() * 6.28;
-            const speed = isTurbo ? Math.random()*8+2 : Math.random()*4+1;
-            this.vx = Math.cos(angle) * speed;
-            this.vy = Math.sin(angle) * speed;
-            this.life = 1.0;
-            this.color = colors[colorIdx];
-        }
-        update() {
-            this.x += this.vx; this.y += this.vy; this.life -= 0.02;
-            this.vy += 0.1; // 重力
-        }
-        draw(ctx) {
-            ctx.globalAlpha = this.life;
-            ctx.fillStyle = this.color;
-            ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, 6.28); ctx.fill();
-        }
-    }
-    let particles = [];
-
+    let firstResult = true;
     function onResults(results) {
-        // 清屏
-        fgCtx.clearRect(0, 0, width, height);
-        bgCtx.fillStyle = 'rgba(0,0,0,0.1)';
-        bgCtx.fillRect(0,0,width,height); // 拖影效果
+        if (firstResult) {
+            log("✅ 成功！AI 模型已加载并运行！", 'info');
+            // 隐藏日志，开始显示画面
+            document.getElementById('console-log').style.height = '100px'; 
+            firstResult = false;
+        }
 
-        let isPinch = false;
-        let isPeace = false;
-        let isPalm = false;
-
+        // 简单绘制
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        
         if (results.multiHandLandmarks) {
             for (const landmarks of results.multiHandLandmarks) {
-                // 获取食指和拇指坐标
-                const idx = landmarks[8];
-                const thm = landmarks[4];
-                
-                // 坐标转换
-                const x = (1 - idx.x) * width;
-                const y = idx.y * height;
-                const tx = (1 - thm.x) * width;
-                const ty = thm.y * height;
-
-                // 简单的捏合检测
-                const dist = Math.hypot(x-tx, y-ty);
-                if (dist < 50) isPinch = true;
-
-                // 简单的手势检测 (根据指尖高度)
-                const midY = landmarks[12].y * height;
-                const ringY = landmarks[16].y * height;
-                const wristY = landmarks[0].y * height;
-                
-                if (idx.y*height < wristY && midY < wristY && ringY > wristY) isPeace = true;
-                if (idx.y*height < wristY && midY < wristY && ringY < wristY) isPalm = true;
-
-                // 绘制光点
-                fgCtx.fillStyle = '#fff';
-                fgCtx.beginPath(); fgCtx.arc(x, y, 10, 0, 6.28); fgCtx.fill();
-
-                // 发射粒子
-                if (isPinch || isPeace) {
-                    const count = isPeace ? 5 : 2;
-                    for(let i=0; i<count; i++) particles.push(new Particle(x, y, isPeace));
-                }
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 2});
             }
         }
-
-        // 更新粒子
-        for (let i = particles.length - 1; i >= 0; i--) {
-            let p = particles[i];
-            p.update();
-            p.draw(fgCtx);
-            if (p.life <= 0) particles.splice(i, 1);
-        }
-
-        // 简单的换色逻辑
-        if (isPalm && Math.random() > 0.95) {
-            colorIdx = (colorIdx + 1) % colors.length;
-        }
-
-        // 更新 UI
-        document.getElementById('b-pinch').className = 'badge ' + (isPinch ? 'active' : '');
-        document.getElementById('b-peace').className = 'badge ' + (isPeace ? 'active' : '');
-        document.getElementById('b-palm').className = 'badge ' + (isPalm ? 'active' : '');
+        canvasCtx.restore();
     }
-
 </script>
 </body>
 </html>
