@@ -727,11 +727,11 @@
         if (globalGestureState.isPalmOpen) badges.palm.classList.add('active'); else badges.palm.classList.remove('active');
     }
 
-    // --- MediaPipe 初始化 (【核心修复 2】本地路径) ---
+    // --- MediaPipe 初始化 (【核心修复 2】使用国内 CDN) ---
     const hands = new Hands({
         locateFile: (file) => {
-            console.log(`加载本地模型: mediapipe/${file}`);
-            return `mediapipe/${file}`;
+            // 使用 Staticfile (字节跳动) 的国内镜像，速度快且不需要翻墙
+            return `https://cdn.staticfile.org/mediapipe-hands/0.4.1646424915/${file}`;
         }
     });
     
