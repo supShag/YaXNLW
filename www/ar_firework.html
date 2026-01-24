@@ -6,12 +6,18 @@
     <title>AR 魔法仙女棒 (RPG Maker 专用版)</title>
 
     <script>
-        // 欺骗 MediaPipe，让它以为是在普通浏览器而非 Node.js 环境中
+    // 只有在 NW.js 环境下才执行欺骗脚本
+    // 网页版浏览器没有 process 对象，会自动跳过此段代码
+    if (typeof process === 'object' && typeof require === 'function') {
         window._oldModule = window.module;
         window.module = undefined; 
         window.exports = undefined;
         window.__dirname = ''; 
-    </script>
+        console.log("检测到 NW.js 环境，已应用兼容性补丁");
+    } else {
+        console.log("检测到标准浏览器环境，跳过兼容性补丁");
+    }
+</script>
 
     <script src="mediapipe/camera_utils.js"></script>
     <script src="mediapipe/control_utils.js"></script>
@@ -260,7 +266,7 @@
         <p><span class="key-gesture">捏合</span>点燃 · <span class="key-gesture">比耶</span>加强 · <span class="key-gesture">张手</span>换色</p>
     </div>
 
-    <video id="input_video"></video>
+    <video id="input_video" playsinline muted style="display:none"></video>
     <canvas id="bgCanvas"></canvas>
     <canvas id="fgCanvas"></canvas>
 
@@ -729,13 +735,11 @@
 
    // --- MediaPipe 初始化 (真正的本地版) ---
     const hands = new Hands({
-        locateFile: (file) => {
-            // 告诉程序：需要加载 .wasm 或 .data 时，直接去当前的 mediapipe 文件夹找
-            // console.log(`正在加载本地核心文件: mediapipe/${file}`); // 用于调试
-            return `mediapipe/${file}`;
-        }
-    });
-    
+    locateFile: (file) => {
+        // 使用相对路径前缀，确保在 GitHub Pages 的子目录下也能找到资源
+        return `./mediapipe/${file}`;
+    }
+});
     hands.setOptions({
         maxNumHands: 1, // 初始单手
         modelComplexity: 1,
@@ -766,14 +770,26 @@
     // --- 摄像头启动 (【核心修复 3】手动启动以避免 NW.js 卡死) ---
     // 替换了原来的 const camera = new Camera(...)
     async function startCamera() {
-        try {
-            loadingDiv.innerHTML = "✨ 正在连接摄像头...";
-            
-            // 1. 获取流
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 640, height: 480, facingMode: "user" },
-                audio: false
-            });
+    // 增加安全上下文检查
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        loadingDiv.innerHTML = "⚠️ 启动失败<br><span style='font-size:0.85em'>网页版必须使用 HTTPS 协议访问才能开启摄像头</span>";
+        return;
+    }
+
+    try {
+        loadingDiv.innerHTML = "✨ 正在连接摄像头...";
+
+        // 增加更宽泛的参数兼容性
+        const constraints = {
+            video: { 
+                width: { ideal: 1280 }, 
+                height: { ideal: 720 }, 
+                facingMode: "user" 
+            },
+            audio: false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
             // 2. 播放视频
             videoElement.srcObject = stream;
