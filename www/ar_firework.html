@@ -727,11 +727,12 @@
         if (globalGestureState.isPalmOpen) badges.palm.classList.add('active'); else badges.palm.classList.remove('active');
     }
 
-    // --- MediaPipe 初始化 (【核心修复 2】使用国内 CDN) ---
+   // --- MediaPipe 初始化 (真正的本地版) ---
     const hands = new Hands({
         locateFile: (file) => {
-            // 使用 Staticfile (字节跳动) 的国内镜像，速度快且不需要翻墙
-            return `https://cdn.staticfile.org/mediapipe-hands/0.4.1646424915/${file}`;
+            // 告诉程序：需要加载 .wasm 或 .data 时，直接去当前的 mediapipe 文件夹找
+            // console.log(`正在加载本地核心文件: mediapipe/${file}`); // 用于调试
+            return `mediapipe/${file}`;
         }
     });
     
