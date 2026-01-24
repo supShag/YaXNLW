@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 魔法仙女棒 (通用修复版)</title>
+    <title>AR 魔法仙女棒 (CDN 极速版)</title>
 
     <script>
     if (typeof process === 'object' && typeof require === 'function') {
@@ -11,104 +11,84 @@
         window.module = undefined; 
         window.exports = undefined;
         window.__dirname = ''; 
-        console.log("检测到 NW.js 环境，已应用兼容性补丁");
     }
     </script>
 
-    <script src="mediapipe/camera_utils.js"></script>
-    <script src="mediapipe/control_utils.js"></script>
-    <script src="mediapipe/drawing_utils.js"></script>
-    <script src="mediapipe/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <style>
-        :root {
-            --glass-bg: rgba(20, 20, 28, 0.75);
-            --glass-border: rgba(255, 255, 255, 0.12);
-            --accent-color: #ffd700;
-            --accent-glow: rgba(255, 215, 0, 0.4);
-            --text-main: #ffffff;
+        :root { --glass-bg: rgba(20, 20, 28, 0.85); --accent: #ffd700; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
+        
+        /* 强制覆盖层 */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 9999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
         }
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: -apple-system, sans-serif; color: var(--text-main); user-select: none; -webkit-user-select: none; }
+        #start-btn {
+            padding: 15px 40px; font-size: 1.2rem; background: var(--accent); color: #000;
+            border: none; border-radius: 30px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+        }
+        
+        #loading-text { color: #fff; margin-top: 20px; font-size: 0.9rem; text-align: center; line-height: 1.5; }
+        #debug-console { 
+            position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; 
+            background: rgba(0,0,0,0.5); color: #0f0; font-size: 10px; 
+            overflow-y: scroll; pointer-events: none; z-index: 50; display: none;
+        }
+
+        /* 隐藏视频，保留 Canvas */
+        #input_video { position: absolute; width: 1px; height: 1px; opacity: 0; }
         canvas { position: absolute; top: 0; left: 0; }
         
-        /* 关键：iOS Safari 必须隐藏视频但保留占位，不能完全 remove */
-        #input_video { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-        
-        .btn-icon { background: var(--glass-bg); border: 1px solid var(--glass-border); color: white; padding: 10px 16px; border-radius: 12px; cursor: pointer; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 0.95rem; display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-        .top-bar { position: absolute; top: 20px; left: 24px; right: 24px; display: flex; justify-content: space-between; z-index: 60; pointer-events: none; }
-        #settings-panel { position: absolute; top: 70px; left: 24px; z-index: 60; background: rgba(18, 18, 24, 0.9); border: 1px solid var(--glass-border); padding: 20px; border-radius: 16px; backdrop-filter: blur(20px); width: 260px; display: none; flex-direction: column; gap: 15px; pointer-events: auto; }
-        .panel-section { display: flex; flex-direction: column; gap: 10px; }
-        .control-row { display: flex; justify-content: space-between; align-items: center; }
-        .toggle-switch { position: relative; width: 44px; height: 24px; appearance: none; background: rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; }
-        .toggle-switch:checked { background: var(--accent-color); }
-        .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: white; border-radius: 50%; transition: 0.3s; }
-        .toggle-switch:checked::after { transform: translateX(20px); }
-        #status-container { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 50; }
-        #status-bar { display: flex; gap: 12px; background: var(--glass-bg); padding: 6px 8px; border-radius: 24px; border: 1px solid var(--glass-border); backdrop-filter: blur(12px); }
-        .badge { padding: 6px 14px; border-radius: 18px; font-size: 0.85rem; opacity: 0.4; transition: 0.4s; color: rgba(255,255,255,0.8); }
-        .badge.active { opacity: 1; background: var(--accent-glow); color: #fff; transform: scale(1.05); }
-        #tips { position: absolute; bottom: 30px; width: 100%; text-align: center; z-index: 10; font-size: 0.9rem; color: rgba(255,255,255,0.8); pointer-events: none; }
-        .key-gesture { color: var(--accent-color); font-weight: 700; background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; }
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1.1rem; z-index: 100; text-align: center; color: #ccc; width: 80%; line-height: 1.6; }
+        /* 简单的 UI */
+        .ui-layer { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 10; pointer-events: none; }
+        .badge { background: rgba(255,255,255,0.2); color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; margin: 0 5px; opacity: 0.5; }
+        .badge.active { background: var(--accent); color: black; opacity: 1; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="loading">✨ 正在连接魔法...<br><span style="font-size:0.85em; opacity:0.6">初始化中</span></div>
 
-    <div class="top-bar">
-        <div class="btn-icon" onclick="toggleSettings()"><span>⚙️ 设置</span></div>
-        <div class="btn-icon" style="border-color: rgba(255,100,100,0.3)" onclick="exitToRPG()"><span>🚪 返回</span></div>
+    <div id="start-overlay">
+        <button id="start-btn" onclick="initApp()">点击开始魔法</button>
+        <div id="loading-text">准备就绪</div>
     </div>
 
-    <div id="settings-panel">
-        <div class="panel-section">
-            <div class="control-row">
-                <span style="font-size:0.9rem">双持模式 (消耗性能)</span>
-                <input type="checkbox" id="dual-mode-toggle" class="toggle-switch" onchange="updateSettings()">
-            </div>
-            <div class="control-row" style="margin-top:10px">
-                <span style="font-size:0.9rem">背景样式</span>
-                <select id="bg-style-select" onchange="updateSettings()" style="background:rgba(255,255,255,0.1); color:white; border:none; padding:4px; border-radius:4px">
-                    <option value="classic">光点</option>
-                    <option value="star">星辰</option>
-                    <option value="none">纯黑</option>
-                </select>
-            </div>
-        </div>
-    </div>
+    <div id="debug-console"></div>
 
-    <div id="status-container">
-        <div id="status-bar">
-            <div class="badge" id="badge-pinch">🔥 点火</div>
-            <div class="badge" id="badge-peace">🚀 极速</div>
-            <div class="badge" id="badge-palm">🎨 换色</div>
-        </div>
+    <div class="ui-layer">
+        <span id="b-pinch" class="badge">点火</span>
+        <span id="b-peace" class="badge">极速</span>
+        <span id="b-palm" class="badge">换色</span>
     </div>
-
-    <div id="tips"><p><span class="key-gesture">捏合</span>点燃 · <span class="key-gesture">比耶</span>加强 · <span class="key-gesture">张手</span>换色</p></div>
 
     <video id="input_video" playsinline webkit-playsinline muted></video>
     <canvas id="bgCanvas"></canvas>
     <canvas id="fgCanvas"></canvas>
 
 <script>
+    // --- 屏幕日志工具 (用于手机调试) ---
+    function log(msg) {
+        console.log(msg);
+        const box = document.getElementById('loading-text');
+        if(box) box.innerHTML = msg;
+        const debug = document.getElementById('debug-console');
+        if(debug) debug.innerHTML += `> ${msg}<br>`;
+    }
+    window.onerror = (msg) => log("❌ 错误: " + msg);
+
+    // --- 核心变量 ---
     const videoElement = document.getElementById('input_video');
     const bgCanvas = document.getElementById('bgCanvas');
     const fgCanvas = document.getElementById('fgCanvas');
     const bgCtx = bgCanvas.getContext('2d');
     const fgCtx = fgCanvas.getContext('2d');
-    const loadingDiv = document.getElementById('loading');
     let width, height;
-
-    // --- 错误监控 ---
-    window.onerror = function(message, source, lineno, colno, error) {
-        loadingDiv.innerHTML = `❌ 发生错误<br><span style='font-size:0.7em; color:#ff6b6b'>${message}</span>`;
-        console.error(error);
-    };
-    window.addEventListener('unhandledrejection', function(event) {
-        loadingDiv.innerHTML = `❌ 资源加载失败<br><span style='font-size:0.7em; color:#ff6b6b'>请检查 .wasm 文件或网络连接</span>`;
-        console.error(event.reason);
-    });
 
     function resize() {
         width = window.innerWidth; height = window.innerHeight;
@@ -118,369 +98,176 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // --- MediaPipe 初始化 (修复路径问题) ---
-    const hands = new Hands({
-        locateFile: (file) => {
-            // 强制使用绝对路径，解决 GitHub Pages 子目录路径解析错误
-            const currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-            const fullURL = `${window.location.protocol}//${window.location.host}${currentPath}/mediapipe/${file}`;
-            console.log(`Loading resource: ${fullURL}`);
-            return fullURL;
-        }
-    });
-
-    hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-
-    hands.onResults((results) => {
-        if (loadingDiv.style.display !== 'none') loadingDiv.style.display = 'none';
-        
-        // 调用游戏绘制逻辑
-        if (typeof updateHands === 'function') {
-            updateHands(results);
-        }
-    });
-
-    // --- 摄像头启动 (修复 Safari 卡死) ---
-    async function startCamera() {
-        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            loadingDiv.innerHTML = "⚠️ 启动失败<br><span style='font-size:0.85em'>网页版必须使用 HTTPS 访问</span>";
-            return;
-        }
+    // --- MediaPipe 配置 (CDN 模式) ---
+    let hands;
+    
+    async function initApp() {
+        const btn = document.getElementById('start-btn');
+        btn.style.display = 'none';
+        log("⏳ 正在初始化 AI 引擎 (CDN)...");
 
         try {
-            loadingDiv.innerHTML = "✨ 正在申请摄像头...";
-            
-            // 优先请求后置摄像头(environment)，如果不行则前置
-            const constraints = {
-                video: { 
-                    width: { ideal: 1280 }, 
-                    height: { ideal: 720 }, 
-                    facingMode: "user" 
-                },
-                audio: false
-            };
+            hands = new Hands({
+                locateFile: (file) => {
+                    // 强制指向 CDN，不再使用本地文件
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }
+            });
 
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+
+            await startCamera();
+
+        } catch (e) {
+            log("❌ 初始化失败: " + e.message);
+            btn.style.display = 'block';
+            btn.innerText = "重试";
+        }
+    }
+
+    async function startCamera() {
+        log("📷 请求摄像头权限...");
+        
+        // 降低分辨率要求以提高兼容性
+        const constraints = {
+            video: { 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 }, 
+                facingMode: "user" 
+            },
+            audio: false
+        };
+
+        try {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             videoElement.srcObject = stream;
-            window.streamReference = stream;
-
-            // 监听视频数据加载完成
-            videoElement.onloadeddata = () => {
-                console.log("Video data loaded, starting play()");
-                videoElement.play();
-            };
-
-            loadingDiv.innerHTML = "✨ 正在加载 AI 模型...<br><span style='font-size:0.8em'>首次加载约需 10-20 秒</span>";
-
-            // 启动帧发送循环
-            const sendFrame = async () => {
-                // 严谨判断：Safari 必须 readyState >= 2 才能读取
-                if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
-                    try {
-                        await hands.send({image: videoElement});
-                    } catch (e) {
-                        console.warn("Frame skipped:", e);
-                    }
-                }
-                requestAnimationFrame(sendFrame);
-            };
-            sendFrame();
-
-        } catch (error) {
-            loadingDiv.innerHTML = `⚠️ 摄像头错误<br><span style='font-size:0.7em'>${error.name}: ${error.message}</span>`;
-        }
-    }
-
-    // --- UI 交互 ---
-    function exitToRPG() {
-        if (window.streamReference) window.streamReference.getTracks().forEach(t => t.stop());
-        window.parent.postMessage("CLOSE_AR_WINDOW", "*");
-    }
-
-    function toggleSettings() {
-        const p = document.getElementById('settings-panel');
-        p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
-    }
-
-    // 简化版设置
-    const appSettings = { bgStyle: 'classic', dualMode: false };
-
-    function updateSettings() {
-        const dual = document.getElementById('dual-mode-toggle').checked;
-        const style = document.getElementById('bg-style-select').value;
-        appSettings.dualMode = dual;
-        appSettings.bgStyle = style;
-        hands.setOptions({ maxNumHands: dual ? 2 : 1 });
-        resetBgGenerator();
-    }
-
-    // ============================================================
-    // 移植自原文件的游戏核心逻辑
-    // ============================================================
-    
-    // 1. 物理稳定器
-    class Stabilizer {
-        constructor(minCutoff = 0.1, beta = 2.0) {
-            this.x = 0; this.y = 0; this.dx = 0; this.dy = 0;
-            this.lastX = 0; this.lastY = 0; this.lastTime = performance.now();
-            this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = 1.0; 
-        }
-        update(targetX, targetY) {
-            const now = performance.now();
-            const dt = (now - this.lastTime) / 1000;
-            this.lastTime = now;
-            if (dt <= 0) return { x: this.x, y: this.y };
-            let dx = (targetX - this.lastX) / dt;
-            let dy = (targetY - this.lastY) / dt;
-            let dAlpha = this.alpha(this.dCutoff, dt);
-            this.dx = this.lerp(this.dx, dx, dAlpha);
-            this.dy = this.lerp(this.dy, dy, dAlpha);
-            let cutoff = this.minCutoff + this.beta * Math.abs(Math.sqrt(this.dx*this.dx + this.dy*this.dy));
-            let alpha = this.alpha(cutoff, dt);
-            this.x = this.lerp(this.x, targetX, alpha);
-            this.y = this.lerp(this.y, targetY, alpha);
-            this.lastX = targetX; this.lastY = targetY;
-            return { x: this.x, y: this.y };
-        }
-        alpha(cutoff, dt) { let tau = 1.0 / (2 * Math.PI * cutoff); return 1.0 / (1.0 + tau / dt); }
-        lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
-    }
-    class ValueStabilizer {
-        constructor(smoothing = 0.1) { this.val = 0; this.smoothing = smoothing; }
-        update(target) { this.val += (target - this.val) * this.smoothing; return this.val; }
-    }
-
-    // 2. 颜色定义
-    const colors = [
-        { hue: 45, sat: 100, light: 75 },
-        { hue: 190, sat: 100, light: 70 },   
-        { hue: 320, sat: 100, light: 70 },   
-        { hue: 140, sat: 100, light: 75 },   
-        { hue: 0, sat: 0, light: 100 }       
-    ];
-    let currentColorIdx = 0;
-
-    // 3. 粒子类
-    class Particle {
-        constructor(x, y, type, handVel = {x:0, y:0}, isTurbo = false) {
-            this.x = x; this.y = y; this.type = type;
-            const angle = Math.random() * Math.PI * 2;
             
-            if (type === 'bg') {
-                const speed = Math.random() * 4 + 2;
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
-                this.gravity = 0.05; this.friction = 0.96;
-                this.life = 1.0; this.decay = Math.random() * 0.015 + 0.01;
-                this.hue = Math.random() * 360;
-                this.size = Math.random() * 2 + 1;
-                this.style = appSettings.bgStyle; 
-                this.rot = Math.random() * 360;
-            } else {
-                const baseSpeed = isTurbo ? (Math.random() * 10 + 3) : (Math.random() * 5 + 1);
-                this.vx = Math.cos(angle) * baseSpeed + (handVel.x * 0.3);
-                this.vy = Math.sin(angle) * baseSpeed + (handVel.y * 0.3);
-                this.gravity = 0.2; this.friction = 0.94;
-                this.life = 1.0; this.decay = Math.random() * 0.03 + 0.01;
-                const theme = colors[currentColorIdx];
-                this.hue = theme.hue + (Math.random() * 30 - 15);
-                this.sat = theme.sat;
-                this.light = theme.light + Math.random() * 20;
-                this.size = (Math.random() * 2.5 + 1) * (isTurbo ? 1.8 : 1.0);
+            // Safari 关键点：必须在用户点击事件后立即调用 play
+            await videoElement.play();
+            
+            log("🤖 正在加载模型 (首次加载需10秒)...");
+            document.getElementById('start-overlay').style.display = 'none'; // 隐藏遮罩，但保留 log
+            
+            // 开启循环
+            processVideo();
+
+        } catch (e) {
+            log("❌ 摄像头错误: " + e.message);
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                log("⚠️ 必须使用 HTTPS 访问！");
             }
+        }
+    }
+
+    async function processVideo() {
+        // 只有当视频真正有数据时才发送
+        if (!videoElement.paused && !videoElement.ended && videoElement.readyState >= 2) {
+            await hands.send({image: videoElement});
+        }
+        // 保持循环
+        requestAnimationFrame(processVideo);
+    }
+
+    // --- 游戏逻辑部分 ---
+    
+    const handInstances = new Map();
+    const colors = ['#f00', '#0f0', '#00f', '#ff0', '#0ff'];
+    let colorIdx = 0;
+    
+    // 简单的粒子类
+    class Particle {
+        constructor(x, y, isTurbo) {
+            this.x = x; this.y = y;
+            const angle = Math.random() * 6.28;
+            const speed = isTurbo ? Math.random()*8+2 : Math.random()*4+1;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            this.life = 1.0;
+            this.color = colors[colorIdx];
         }
         update() {
-            this.vx *= this.friction; this.vy *= this.friction;
-            this.vy += this.gravity; this.x += this.vx; this.y += this.vy;
-            this.life -= this.decay;
+            this.x += this.vx; this.y += this.vy; this.life -= 0.02;
+            this.vy += 0.1; // 重力
         }
         draw(ctx) {
-            ctx.save();
             ctx.globalAlpha = this.life;
-            if (this.type === 'bg') {
-                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
-                if (this.style === 'star') {
-                    ctx.translate(this.x, this.y); ctx.rotate(this.rot * Math.PI / 180); this.rot += 2;
-                    this.drawStar(ctx, 0, 0, 4, this.size * 2, this.size * 0.8);
-                } else {
-                    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
-                }
-            } else {
-                ctx.fillStyle = `hsl(${this.hue}, ${this.sat}%, ${this.light}%)`;
-                ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = this.size > 2 ? 25 : 10;
-                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fill();
-            }
-            ctx.restore();
-        }
-        drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
-            let rot = Math.PI / 2 * 3; let x = cx, y = cy; let step = Math.PI / spikes;
-            ctx.beginPath(); ctx.moveTo(cx, cy - outerRadius);
-            for (let i = 0; i < spikes; i++) {
-                x = cx + Math.cos(rot) * outerRadius; y = cy + Math.sin(rot) * outerRadius; ctx.lineTo(x, y); rot += step;
-                x = cx + Math.cos(rot) * innerRadius; y = cy + Math.sin(rot) * innerRadius; ctx.lineTo(x, y); rot += step;
-            }
-            ctx.lineTo(cx, cy - outerRadius); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = this.color;
+            ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, 6.28); ctx.fill();
         }
     }
+    let particles = [];
 
-    let bgParticles = [];
-    let fgParticles = [];
-    let bgIntervalId = null;
-
-    function resetBgGenerator() {
-        if (bgIntervalId) clearInterval(bgIntervalId);
-        if (appSettings.bgStyle === 'none') return;
-        bgIntervalId = setInterval(() => {
-            const x = Math.random() * width;
-            const y = height * 0.2 + Math.random() * (height * 0.4);
-            const particleCount = 60;
-            for(let i=0; i<particleCount; i++) bgParticles.push(new Particle(x, y, 'bg'));
-        }, 3000);
-    }
-    resetBgGenerator();
-
-    // 4. 手部实例类
-    class HandInstance {
-        constructor() {
-            this.pos = { x: -100, y: -100 };
-            this.lastPos = { x: -100, y: -100 };
-            this.velocity = { x: 0, y: 0 };
-            this.stabilizer = new Stabilizer(0.05, 0.8);
-            this.angleStabilizer = new ValueStabilizer(0.12);
-            this.stickAngle = 0;
-            this.gesture = { isDetected: false, isPinching: false, isTurbo: false, isPalmOpen: false };
-            this.lastSeen = 0;
-        }
-        update(landmarks, now) {
-            this.lastSeen = now;
-            this.gesture.isDetected = true;
-            const p9 = landmarks[9], p0 = landmarks[0];
-            const rawX = (1 - (p9.x * 0.75 + p0.x * 0.25)) * width;
-            const rawY = (p9.y * 0.75 + p0.y * 0.25) * height;
-            const smoothed = this.stabilizer.update(rawX, rawY);
-            this.pos.x = smoothed.x; this.pos.y = smoothed.y;
-            this.velocity.x = this.pos.x - this.lastPos.x; this.velocity.y = this.pos.y - this.lastPos.y;
-            this.lastPos.x = this.pos.x; this.lastPos.y = this.pos.y;
-            let targetTilt = Math.max(-35, Math.min(35, -this.velocity.x * 2.0));
-            this.stickAngle = this.angleStabilizer.update(targetTilt);
-            this.detectGestures(landmarks);
-        }
-        detectGestures(landmarks) {
-            const indexTip = landmarks[8], thumbTip = landmarks[4];
-            const tipsY = [landmarks[8].y, landmarks[12].y, landmarks[16].y, landmarks[20].y];
-            const pipsY = [landmarks[6].y, landmarks[10].y, landmarks[14].y, landmarks[18].y];
-            const pinchDist = Math.hypot((indexTip.x - thumbTip.x), (indexTip.y - thumbTip.y));
-            this.gesture.isPinching = pinchDist < 0.08; 
-            const isOpen = [tipsY[0]<pipsY[0], tipsY[1]<pipsY[1], tipsY[2]<pipsY[2], tipsY[3]<pipsY[3]];
-            this.gesture.isTurbo = isOpen[0] && isOpen[1] && !isOpen[2] && !isOpen[3];
-            this.gesture.isPalmOpen = isOpen[0] && isOpen[1] && isOpen[2] && isOpen[3];
-        }
-    }
-
-    const handInstances = new Map();
-    handInstances.set('Left', new HandInstance());
-    handInstances.set('Right', new HandInstance());
-    
-    let globalGestureState = { lastColorChangeTime: 0 };
-    const badges = {
-        pinch: document.getElementById('badge-pinch'),
-        peace: document.getElementById('badge-peace'),
-        palm: document.getElementById('badge-palm')
-    };
-
-    // 5. 更新状态与UI
-    function updateHands(results) {
-        const now = Date.now();
-        if (results.multiHandLandmarks) {
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                let label = results.multiHandedness && results.multiHandedness[i] ? results.multiHandedness[i].label : 'Right';
-                if (handInstances.has(label)) handInstances.get(label).update(results.multiHandLandmarks[i], now);
-            }
-        }
-        
-        // 状态汇总
-        let anyPinch = false, anyTurbo = false, anyPalm = false;
-        for (let hand of handInstances.values()) {
-            if (now - hand.lastSeen < 200) {
-                if (hand.gesture.isPinching) anyPinch = true;
-                if (hand.gesture.isTurbo) anyTurbo = true;
-                if (hand.gesture.isPalmOpen) anyPalm = true;
-            }
-        }
-
-        if (anyPalm && (now - globalGestureState.lastColorChangeTime > 1200)) {
-            globalGestureState.lastColorChangeTime = now;
-            currentColorIdx = (currentColorIdx + 1) % colors.length;
-            const flash = document.createElement('div');
-            flash.style.cssText = `position:absolute;top:0;left:0;width:100%;height:100%;background:hsl(${colors[currentColorIdx].hue},50%,50%);opacity:0.2;pointer-events:none;z-index:999;transition:0.3s`;
-            document.body.appendChild(flash);
-            setTimeout(() => { flash.style.opacity = 0; setTimeout(()=>flash.remove(),300); }, 50);
-        }
-
-        badges.pinch.classList.toggle('active', anyPinch);
-        badges.peace.classList.toggle('active', anyTurbo);
-        badges.palm.classList.toggle('active', anyPalm);
-    }
-
-    // 6. 渲染循环
-    function loop() {
-        requestAnimationFrame(loop);
-        bgCtx.fillStyle = 'rgba(5, 5, 8, 0.25)';
-        bgCtx.fillRect(0, 0, width, height);
+    function onResults(results) {
+        // 清屏
         fgCtx.clearRect(0, 0, width, height);
+        bgCtx.fillStyle = 'rgba(0,0,0,0.1)';
+        bgCtx.fillRect(0,0,width,height); // 拖影效果
 
-        // 背景
-        for (let i = bgParticles.length - 1; i >= 0; i--) {
-            let p = bgParticles[i]; p.update(); p.draw(bgCtx);
-            if (p.life <= 0) bgParticles.splice(i, 1);
-        }
+        let isPinch = false;
+        let isPeace = false;
+        let isPalm = false;
 
-        const now = Date.now();
-        // 手部
-        for (let hand of handInstances.values()) {
-            if (now - hand.lastSeen > 200) continue;
-            
-            // 绘制仙女棒
-            fgCtx.save();
-            fgCtx.translate(hand.pos.x, hand.pos.y);
-            fgCtx.rotate(hand.stickAngle * Math.PI / 180);
-            fgCtx.strokeStyle = "#e0e0e0"; fgCtx.lineCap = "round"; fgCtx.lineWidth = 12; 
-            fgCtx.beginPath(); fgCtx.moveTo(0, 0); fgCtx.lineTo(0, 180); fgCtx.stroke();
-            fgCtx.strokeStyle = "#a0a0a0"; fgCtx.lineWidth = 4;
-            fgCtx.beginPath(); fgCtx.moveTo(0, 20); fgCtx.lineTo(0, 170); fgCtx.stroke();
-            fgCtx.fillStyle = "#ffd700"; fgCtx.fillRect(-7, 50, 14, 4); fgCtx.fillRect(-7, 80, 14, 4);
-            const shouldEmit = hand.gesture.isPinching || hand.gesture.isTurbo;
-            fgCtx.fillStyle = shouldEmit ? "#fff" : "#666";
-            fgCtx.fillRect(-8, -15, 16, 45); 
-            if (shouldEmit) {
-                fgCtx.shadowBlur = hand.gesture.isTurbo ? 60 : 35; fgCtx.shadowColor = "#ffeb3b";
-                fgCtx.fillStyle = "#fff"; fgCtx.beginPath(); fgCtx.arc(0, 0, hand.gesture.isTurbo ? 16 : 10, 0, Math.PI*2); fgCtx.fill();
-            }
-            fgCtx.restore();
+        if (results.multiHandLandmarks) {
+            for (const landmarks of results.multiHandLandmarks) {
+                // 获取食指和拇指坐标
+                const idx = landmarks[8];
+                const thm = landmarks[4];
+                
+                // 坐标转换
+                const x = (1 - idx.x) * width;
+                const y = idx.y * height;
+                const tx = (1 - thm.x) * width;
+                const ty = thm.y * height;
 
-            // 发射粒子
-            if (shouldEmit) {
-                let count = hand.gesture.isTurbo ? 12 : 6;
-                for(let i=0; i<count; i++) {
-                    fgParticles.push(new Particle(hand.pos.x, hand.pos.y, 'fg', hand.velocity, hand.gesture.isTurbo));
+                // 简单的捏合检测
+                const dist = Math.hypot(x-tx, y-ty);
+                if (dist < 50) isPinch = true;
+
+                // 简单的手势检测 (根据指尖高度)
+                const midY = landmarks[12].y * height;
+                const ringY = landmarks[16].y * height;
+                const wristY = landmarks[0].y * height;
+                
+                if (idx.y*height < wristY && midY < wristY && ringY > wristY) isPeace = true;
+                if (idx.y*height < wristY && midY < wristY && ringY < wristY) isPalm = true;
+
+                // 绘制光点
+                fgCtx.fillStyle = '#fff';
+                fgCtx.beginPath(); fgCtx.arc(x, y, 10, 0, 6.28); fgCtx.fill();
+
+                // 发射粒子
+                if (isPinch || isPeace) {
+                    const count = isPeace ? 5 : 2;
+                    for(let i=0; i<count; i++) particles.push(new Particle(x, y, isPeace));
                 }
             }
         }
 
-        // 前景粒子
-        for (let i = fgParticles.length - 1; i >= 0; i--) {
-            let p = fgParticles[i]; p.update(); p.draw(fgCtx);
-            if (p.life <= 0) fgParticles.splice(i, 1);
+        // 更新粒子
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.update();
+            p.draw(fgCtx);
+            if (p.life <= 0) particles.splice(i, 1);
         }
+
+        // 简单的换色逻辑
+        if (isPalm && Math.random() > 0.95) {
+            colorIdx = (colorIdx + 1) % colors.length;
+        }
+
+        // 更新 UI
+        document.getElementById('b-pinch').className = 'badge ' + (isPinch ? 'active' : '');
+        document.getElementById('b-peace').className = 'badge ' + (isPeace ? 'active' : '');
+        document.getElementById('b-palm').className = 'badge ' + (isPalm ? 'active' : '');
     }
-    
-    startCamera();
-    loop();
 
 </script>
 </body>
